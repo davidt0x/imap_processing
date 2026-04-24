@@ -8,6 +8,11 @@ import pytest
 import xarray as xr
 from scipy.stats import exponnorm
 
+from imap_processing.cdf.spdf_validation import (
+    is_spdf_validator_available,
+    should_stream_spdf_output,
+    validate_cdf_with_spdf,
+)
 from imap_processing.cdf.utils import write_cdf
 from imap_processing.idex import idex_constants
 from imap_processing.idex.idex_l1b import idex_l1b
@@ -125,6 +130,34 @@ def test_l2a_logical_source_and_cdf(l2a_dataset: xr.Dataset):
         assert "DICT_KEY" in l2a_dataset[var].attrs, (
             f"Variable {var} is missing the DICT_KEY attribute for SPASE metadata."
         )
+
+    representative_attrs = l2a_dataset["mass"].attrs
+    for attr_name in [
+        "DICT_KEY",
+        "CATDESC",
+        "FIELDNAM",
+        "FORMAT",
+        "FILLVAL",
+        "VALIDMIN",
+        "VALIDMAX",
+        "VAR_TYPE",
+        "DISPLAY_TYPE",
+    ]:
+        assert attr_name in representative_attrs, (
+            f"IDEX L2A variable 'mass' is missing {attr_name}"
+        )
+
+
+@pytest.mark.external_test_data
+@pytest.mark.spdf_validation
+def test_l2a_spdf_validation(l2a_dataset: xr.Dataset):
+    """Run SPDF CLI validation on a representative IDEX L2A file."""
+    if not is_spdf_validator_available():
+        pytest.skip("SPDF CLI validator is not installed.")
+
+    l2a_dataset.attrs["Data_version"] = "999"
+    file_name = write_cdf(l2a_dataset)
+    validate_cdf_with_spdf(file_name, stream_output=should_stream_spdf_output())
 
 
 def test_time_to_mass_zero_lag():

@@ -6,6 +6,12 @@ import pytest
 import xarray as xr
 
 from imap_processing import imap_module_directory
+from imap_processing.cdf.spdf_validation import (
+    is_spdf_validator_available,
+    should_stream_spdf_output,
+    validate_cdf_with_spdf,
+)
+from imap_processing.cdf.utils import write_cdf
 from imap_processing.hit.l1a import hit_l1a
 from imap_processing.hit.l1b.hit_l1b import (
     SUMMED_PARTICLE_ENERGY_RANGE_MAPPING,
@@ -214,6 +220,48 @@ def test_add_cdf_attributes():
         assert f"{dim}_label" in result.coords
         assert f"{f'{dim}_label'}_attr" in result[f"{dim}_label"].attrs
         assert list(result[f"{dim}_label"].dims) == [dim]
+
+
+def test_hit_l2_standard_cdf_metadata(
+    l1b_standard_rates_dataset, ancillary_dependencies
+):
+    """Test representative HIT L2 metadata and CDF creation."""
+    l2_dataset = hit_l2(l1b_standard_rates_dataset, ancillary_dependencies["standard"])
+    l2_dataset.attrs["Data_version"] = "999"
+    file_name = write_cdf(l2_dataset)
+
+    assert file_name.exists()
+    assert file_name.name == "imap_hit_l2_standard-intensity_20100105_v999.cdf"
+    assert l2_dataset.attrs["Logical_source"] == "imap_hit_l2_standard-intensity"
+
+    h_attrs = l2_dataset["h_standard_intensity"].attrs
+    for attr_name in [
+        "DICT_KEY",
+        "CATDESC",
+        "FIELDNAM",
+        "FORMAT",
+        "FILLVAL",
+        "VALIDMIN",
+        "VALIDMAX",
+        "VAR_TYPE",
+        "DISPLAY_TYPE",
+    ]:
+        assert attr_name in h_attrs, f"HIT L2 variable 'h' is missing {attr_name}"
+
+
+@pytest.mark.spdf_validation
+def test_hit_l2_standard_spdf_validation(
+    l1b_standard_rates_dataset, ancillary_dependencies
+):
+    """Run SPDF CLI validation on a representative HIT L2 file."""
+    if not is_spdf_validator_available():
+        pytest.skip("SPDF CLI validator is not installed.")
+
+    l2_dataset = hit_l2(l1b_standard_rates_dataset, ancillary_dependencies["standard"])
+    l2_dataset.attrs["Data_version"] = "999"
+    file_name = write_cdf(l2_dataset)
+
+    validate_cdf_with_spdf(file_name, stream_output=should_stream_spdf_output())
 
 
 def test_load_ancillary_data():

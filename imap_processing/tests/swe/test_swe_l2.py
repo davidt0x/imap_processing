@@ -10,6 +10,11 @@ from imap_data_access.processing_input import (
 )
 
 from imap_processing import imap_module_directory
+from imap_processing.cdf.spdf_validation import (
+    is_spdf_validator_available,
+    should_stream_spdf_output,
+    validate_cdf_with_spdf,
+)
 from imap_processing.cdf.utils import write_cdf
 from imap_processing.swe.l1a.swe_l1a import swe_l1a
 from imap_processing.swe.l1b.swe_l1b import swe_l1b
@@ -35,6 +40,32 @@ OLD_GEOMETRIC_FACTORS = np.array(
         432e-6,
     ]
 )
+
+
+def _assert_representative_swe_metadata(l2_dataset: xr.Dataset) -> None:
+    """Assert key metadata fields exist on representative SWE L2 variables."""
+    representative_vars = [
+        "phase_space_density_spin_sector",
+        "flux_spin_sector",
+        "phase_space_density",
+        "flux",
+    ]
+    for var_name in representative_vars:
+        attrs = l2_dataset[var_name].attrs
+        for attr_name in [
+            "DICT_KEY",
+            "CATDESC",
+            "FIELDNAM",
+            "FORMAT",
+            "FILLVAL",
+            "VALIDMIN",
+            "VALIDMAX",
+            "VAR_TYPE",
+            "DISPLAY_TYPE",
+        ]:
+            assert attr_name in attrs, (
+                f"SWE L2 variable '{var_name}' is missing {attr_name}"
+            )
 
 
 @patch(
@@ -363,6 +394,7 @@ def test_swe_l2_15sec(
     l2_dataset.attrs["Data_version"] = "002"
     l2_cdf_filepath = write_cdf(l2_dataset)
     assert l2_cdf_filepath.name == "imap_swe_l2_sci_20240510_v002.cdf"
+    _assert_representative_swe_metadata(l2_dataset)
 
     # --------- sector validation--------
     sector_psd_data = l2_dataset["phase_space_density_spin_sector"].data
@@ -447,6 +479,7 @@ def test_swe_l2_14_6sec(
     l2_dataset.attrs["Data_version"] = "002"
     l2_cdf_filepath = write_cdf(l2_dataset)
     assert l2_cdf_filepath.name == "imap_swe_l2_sci_20240510_v002.cdf"
+    _assert_representative_swe_metadata(l2_dataset)
 
     # --------14.6 sec spin period validation--------
     bin_flux_val = l2_binned_flux_14sec_validation_df.values[:, 1:].reshape(
@@ -470,3 +503,71 @@ def test_swe_l2_14_6sec(
     non_nan_data = bin_psd_data[nan_mask]
     non_nan_val = bin_psd_val[nan_mask]
     np.testing.assert_allclose(non_nan_data, non_nan_val, rtol=1e-6)
+
+
+@patch(
+    "imap_processing.swe.utils.swe_constants.GEOMETRIC_FACTORS",
+    new=OLD_GEOMETRIC_FACTORS,
+)
+@patch("imap_data_access.processing_input.ProcessingInputCollection.get_file_paths")
+@patch(
+    "imap_processing.spice.spin.get_spacecraft_to_instrument_spin_phase_offset",
+    return_value=153 / 360,
+)
+@pytest.mark.usefixtures("use_fake_spin_data_for_time")
+@pytest.mark.spdf_validation
+def test_swe_l2_spdf_validation(
+    mock_phase_offset,
+    mock_get_file_paths,
+    use_fake_spin_data_for_time,
+):
+    """Run SPDF CLI validation on a representative SWE L2 file."""
+    if not is_spdf_validator_available():
+        pytest.skip("SPDF CLI validator is not installed.")
+
+    data_start_time = 453051293.0
+    data_end_time = 453070000.0
+    use_fake_spin_data_for_time(data_start_time, data_end_time)
+
+    test_data_path = "tests/swe/l0_data/2024051010_SWE_SCIENCE_packet.bin"
+    l1a_ds = swe_l1a(imap_module_directory / test_data_path)[0]
+    l1a_ds.attrs["Data_version"] = "000"
+    l1a_cdf_filepath = write_cdf(l1a_ds)
+
+    def get_file_paths_side_effect(descriptor):
+        if descriptor == "sci":
+            return [l1a_cdf_filepath]
+        if descriptor == "l1b-in-flight-cal":
+            return [
+                imap_module_directory
+                / "tests/swe/lut/imap_swe_l1b-in-flight-cal_20240510_20260716_v000.csv"
+            ]
+        if descriptor == "eu-conversion":
+            return [
+                imap_module_directory
+                / "tests/swe/lut/imap_swe_eu-conversion_20240510_v000.csv"
+            ]
+        if descriptor == "esa-lut":
+            return [
+                imap_module_directory
+                / "tests/swe/lut/imap_swe_esa-lut_20250301_v000.csv"
+            ]
+        if descriptor == "raw":
+            return []
+        raise ValueError(f"Unknown descriptor: {descriptor}")
+
+    mock_get_file_paths.side_effect = get_file_paths_side_effect
+    dependencies = ProcessingInputCollection(
+        ScienceInput(l1a_cdf_filepath.name),
+        AncillaryInput("imap_swe_l1b-in-flight-cal_20240510_20260716_v000.csv"),
+        AncillaryInput("imap_swe_eu-conversion_20240510_v000.csv"),
+    )
+    l1b_dataset = swe_l1b(dependencies)[0]
+    l1b_dataset.attrs["Data_version"] = "000"
+    l2_dataset = swe_l2(l1b_dataset)
+    l2_dataset.attrs["Data_version"] = "999"
+    _assert_representative_swe_metadata(l2_dataset)
+
+    validate_cdf_with_spdf(
+        write_cdf(l2_dataset), stream_output=should_stream_spdf_output()
+    )

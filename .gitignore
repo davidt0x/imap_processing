@@ -134,6 +134,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.spdf-tools
 env/
 venv/
 ENV/

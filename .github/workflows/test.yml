@@ -72,3 +72,55 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  spdf-cdf-validation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      - uses: Gr1N/setup-poetry@v8
+        with:
+          poetry-version: "1.8.0"
+
+      - name: Install dependencies and app
+        run: |
+          poetry self add "poetry-dynamic-versioning[plugin]"
+          poetry install --extras "test"
+
+      - name: Cache data directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/data/
+            **/test_data/
+          key: cdf-data-${{ hashFiles('**/data/*', '**/test_data/*') }}
+          restore-keys: |
+            cdf-data-
+
+      - name: Install SPDF validator and run representative checks
+        run: |
+          poetry run python imap_processing/tests/conftest.py
+          bash tools/spdf/install_spdf_validator_linux.sh "$RUNNER_TEMP/spdf-tools" > "$RUNNER_TEMP/spdf-env.sh"
+          source "$RUNNER_TEMP/spdf-env.sh"
+          poetry run pytest -vv \
+            imap_processing/tests/hit/test_hit_l2.py::test_hit_l2_standard_spdf_validation \
+            imap_processing/tests/idex/test_idex_l2a.py::test_l2a_spdf_validation \
+            imap_processing/tests/swe/test_swe_l2.py::test_swe_l2_spdf_validation \
+            -m "spdf_validation"
