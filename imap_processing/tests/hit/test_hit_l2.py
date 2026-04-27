@@ -40,6 +40,8 @@ from imap_processing.hit.l2.hit_l2 import (
     reshape_for_sectored,
 )
 
+pytestmark = pytest.mark.spdf_autovalidate
+
 
 @pytest.fixture(scope="module")
 def sci_packet_filepath():

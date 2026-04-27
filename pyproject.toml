@@ -95,6 +95,7 @@ markers = [
     "external_kernel: marks tests as requiring external SPICE kernels (deselect with '-m \"not external_kernel\"')",
     "external_test_data: marks tests as requiring external test data (deselect with '-m \"not external_test_data\"')",
     "spdf_validation: marks tests that exercise the local SPDF CLI validator",
+    "spdf_autovalidate: marks tests whose generated L2+ CDF outputs should be auto-validated with SPDF when enabled",
     "use_test_metakernel: Mark test to use a test metakernel"
 ]
 

@@ -33,6 +33,8 @@ from imap_processing.idex.idex_l2a import (
 )
 from imap_processing.idex.idex_utils import get_idex_attrs
 
+pytestmark = pytest.mark.spdf_autovalidate
+
 
 @pytest.fixture
 def l2a_dataset(

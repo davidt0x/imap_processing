@@ -39,6 +39,20 @@ Then validate one or more generated CDFs with:
 
    poetry run python -m imap_processing.cdf.spdf_validation path/to/file.cdf
 
+The pytest suite also supports automatic validation of generated ``L2+`` CDF
+outputs for opted-in test modules. This rollout is marker-based so that
+instruments can be enabled gradually. To use the automatic harness locally:
+
+.. code-block:: bash
+
+   export IMAP_SPDF_VALIDATE_GENERATED_CDFS=1
+   poetry run pytest imap_processing/tests/hit/test_hit_l2.py
+
+Only tests marked with ``spdf_autovalidate`` participate in this mode, and only
+generated ``L2`` and higher CDF outputs under that test's temporary data
+directory are sent to the SPDF validator. Passing validations stay quiet by
+default; failures always print the SPDF checker output.
+
 The installer script downloads the official NASA CDF distribution from
 ``cdf.gsfc.nasa.gov`` and the official SKTEditor package from
 ``spdf.gsfc.nasa.gov``. In CI we use the same flow on Ubuntu so that the SPDF

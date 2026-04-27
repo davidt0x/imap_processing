@@ -1,6 +1,7 @@
 """Global pytest configuration for the package."""
 
 import logging
+import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -14,6 +15,13 @@ import requests
 import spiceypy
 
 from imap_processing import imap_module_directory
+from imap_processing.cdf.spdf_validation import (
+    SpdfValidationError,
+    is_spdf_validator_available,
+    should_stream_spdf_output,
+    validate_cdf_with_spdf,
+)
+from imap_processing.cdf.utils import parse_filename_like
 from imap_processing.cdf.utils import load_cdf
 from imap_processing.spice import config as spice_config
 from imap_processing.spice.time import TTJ2000_EPOCH, met_to_ttj2000ns
@@ -132,6 +140,99 @@ def _download_external_data(external_test_data=EXTERNAL_TEST_DATA):
             logger.info(f"File already exists: {destination}")
 
 
+def is_spdf_generated_cdf_validation_enabled() -> bool:
+    """Return ``True`` when post-test SPDF validation is enabled."""
+    return os.environ.get("IMAP_SPDF_VALIDATE_GENERATED_CDFS", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def should_auto_validate_generated_cdfs(item: pytest.Item) -> bool:
+    """Return ``True`` when a test opts into automatic SPDF validation."""
+    return (
+        is_spdf_generated_cdf_validation_enabled()
+        and item.get_closest_marker("spdf_autovalidate") is not None
+    )
+
+
+def is_generated_l2plus_cdf(cdf_path: Path) -> bool:
+    """Return ``True`` for generated L2 and higher IMAP CDF filenames."""
+    try:
+        match = parse_filename_like(cdf_path.stem)
+    except ValueError:
+        return False
+
+    data_level = match.group("data_level")
+    if len(data_level) < 2 or not data_level.startswith("l") or not data_level[1].isdigit():
+        return False
+    return int(data_level[1]) >= 2
+
+
+def get_generated_l2plus_cdfs(output_root: Path) -> list[Path]:
+    """Return generated L2+ CDF files under the test output root."""
+    return sorted(
+        cdf_path
+        for cdf_path in output_root.rglob("*.cdf")
+        if cdf_path.is_file() and is_generated_l2plus_cdf(cdf_path)
+    )
+
+
+def auto_validate_generated_cdfs(
+    output_root: Path,
+    item: pytest.Item,
+    *,
+    validator=validate_cdf_with_spdf,
+) -> list[Path]:
+    """Validate generated L2+ CDF files for a marked test when enabled."""
+    if not should_auto_validate_generated_cdfs(item):
+        return []
+
+    cdf_files = get_generated_l2plus_cdfs(output_root)
+    if not cdf_files:
+        return []
+
+    if not is_spdf_validator_available():
+        pytest.fail(
+            "SPDF auto-validation is enabled for this test, but the SPDF validator "
+            "is not installed or not configured.",
+            pytrace=False,
+        )
+
+    validated_files = []
+    failures = []
+    for cdf_file in cdf_files:
+        try:
+            validator(cdf_file, stream_output=should_stream_spdf_output())
+        except SpdfValidationError as exc:
+            failures.append((cdf_file, str(exc)))
+        else:
+            validated_files.append(cdf_file)
+
+    if failures:
+        failure_summary = "\n".join(
+            f"- {cdf_file}: {message.splitlines()[0]}"
+            for cdf_file, message in failures
+        )
+        pytest.fail(
+            "SPDF auto-validation failed for generated CDF files:\n"
+            f"{failure_summary}",
+            pytrace=False,
+        )
+
+    return validated_files
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_makereport(item, call):
+    """Attach the test report to the item for teardown-aware fixtures."""
+    outcome = yield
+    report = outcome.get_result()
+    setattr(item, f"rep_{report.when}", report)
+
+
 def pytest_collection_modifyitems(items):
     """
     The use of this hook allows modification of test `Items` after tests have
@@ -161,6 +262,15 @@ def pytest_collection_modifyitems(items):
         for marker, fixture in markers_to_fixtures.items():
             if item.get_closest_marker(marker) is not None:
                 item.fixturenames.append(fixture)
+
+
+@pytest.fixture(autouse=True)
+def _auto_validate_generated_cdfs(request, tmp_path):
+    """Validate generated L2+ CDFs for opted-in tests after successful execution."""
+    yield
+    if getattr(request.node, "rep_call", None) and request.node.rep_call.failed:
+        return
+    auto_validate_generated_cdfs(tmp_path, request.node)
 
 
 @pytest.fixture(scope="session")

@@ -115,12 +115,13 @@ jobs:
             cdf-data-
 
       - name: Install SPDF validator and run representative checks
+        env:
+          IMAP_SPDF_VALIDATE_GENERATED_CDFS: "1"
         run: |
           poetry run python imap_processing/tests/conftest.py
           bash tools/spdf/install_spdf_validator_linux.sh "$RUNNER_TEMP/spdf-tools" > "$RUNNER_TEMP/spdf-env.sh"
           source "$RUNNER_TEMP/spdf-env.sh"
           poetry run pytest -vv \
-            imap_processing/tests/hit/test_hit_l2.py::test_hit_l2_standard_spdf_validation \
-            imap_processing/tests/idex/test_idex_l2a.py::test_l2a_spdf_validation \
-            imap_processing/tests/swe/test_swe_l2.py::test_swe_l2_spdf_validation \
-            -m "spdf_validation"
+            imap_processing/tests/hit/test_hit_l2.py \
+            imap_processing/tests/idex/test_idex_l2a.py \
+            imap_processing/tests/swe/test_swe_l2.py

@@ -27,7 +27,10 @@ from imap_processing.swe.l2.swe_l2 import (
 )
 from imap_processing.swe.utils import swe_constants
 
-pytestmark = pytest.mark.external_test_data
+pytestmark = [
+    pytest.mark.external_test_data,
+    pytest.mark.spdf_autovalidate,
+]
 
 OLD_GEOMETRIC_FACTORS = np.array(
     [
