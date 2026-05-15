@@ -93,6 +93,53 @@ def mock_half_spin_per_esa_step():
     return np.tile(half_spin_per_esa, (2, 1))
 
 
+def _generate_lo_species_l2_dataset(
+    descriptor: str,
+    mock_get_file_paths,
+    codice_lut_path,
+) -> xr.Dataset:
+    mock_get_file_paths.side_effect = [
+        codice_lut_path(descriptor=descriptor, data_type="l0"),
+        codice_lut_path(descriptor="l1a-sci-lut"),
+    ]
+    processed_l1a_file = write_cdf(process_l1a(ProcessingInputCollection())[0])
+    processed_l1b_file = write_cdf(process_codice_l1b(processed_l1a_file))
+    mock_get_file_paths.side_effect = [
+        [processed_l1b_file.as_posix()],
+        codice_lut_path(descriptor="l2-lo-gfactor"),
+        codice_lut_path(descriptor="l2-lo-efficiency"),
+    ]
+    return process_codice_l2(descriptor, ProcessingInputCollection())
+
+
+def _normalize_lo_species_validation_dataset(
+    dataset: xr.Dataset, *, rename_neon: bool = False
+) -> xr.Dataset:
+    dataset = dataset.copy()
+    for variable in dataset.data_vars:
+        if "spin_sector" in dataset[variable].dims:
+            dataset[variable] = dataset[variable].squeeze("spin_sector", drop=True)
+
+    drop_names = [
+        name
+        for name in ("spin_sector", "spin_sector_label")
+        if name in dataset.variables
+    ]
+    if drop_names:
+        dataset = dataset.drop_vars(drop_names)
+
+    if rename_neon:
+        rename_map = {
+            old_name: new_name
+            for old_name, new_name in {"ne": "neon", "unc_ne": "unc_neon"}.items()
+            if old_name in dataset
+        }
+        if rename_map:
+            dataset = dataset.rename(rename_map)
+
+    return dataset
+
+
 def test_compute_geometric_factors_all_full_mode(mock_half_spin_per_esa_step):
     # rgfo_half_spin = 4 means all half_spin values (2 or 3) are < rgfo_half_spin
     dataset = xr.Dataset(
@@ -304,10 +351,11 @@ def test_process_lo_species_intensity(mock_get_file_paths, codice_lut_path):
             / (len_pos * 4 * l1b_data["energy_per_charge"].data)[
                 np.newaxis, :, np.newaxis
             ]
-        )
+        ).squeeze("spin_sector", drop=True)
         np.testing.assert_allclose(
             l1b_val_data_processed[var].values, expected_intensity.values, rtol=1e-5
         )
+        assert l1b_val_data_processed[var].dims == ("epoch", "esa_step")
 
 
 def test_process_lo_missing_species_intensity():
@@ -416,19 +464,9 @@ def test_process_lo_angular_intensity(mock_get_file_paths, codice_lut_path):
 
 @patch("imap_data_access.processing_input.ProcessingInputCollection.get_file_paths")
 def test_codice_l2_sw_species_intensity(mock_get_file_paths, codice_lut_path):
-    mock_get_file_paths.side_effect = [
-        codice_lut_path(descriptor="lo-sw-species", data_type="l0"),
-        codice_lut_path(descriptor="l1a-sci-lut"),
-    ]
-    processed_l1a_file = write_cdf(process_l1a(ProcessingInputCollection())[0])
-    processed_l1b_file = write_cdf(process_codice_l1b(processed_l1a_file))
-    # Mock get_files for l2
-    mock_get_file_paths.side_effect = [
-        [processed_l1b_file.as_posix()],
-        codice_lut_path(descriptor="l2-lo-gfactor"),
-        codice_lut_path(descriptor="l2-lo-efficiency"),
-    ]
-    processed_2_ds = process_codice_l2("lo-sw-species", ProcessingInputCollection())
+    processed_2_ds = _generate_lo_species_l2_dataset(
+        "lo-sw-species", mock_get_file_paths, codice_lut_path
+    )
     l2_val_data = (
         imap_module_directory
         / "tests"
@@ -440,7 +478,9 @@ def test_codice_l2_sw_species_intensity(mock_get_file_paths, codice_lut_path):
             f"_{VALIDATION_FILE_VERSION}.cdf"
         )
     )
-    l2_val_data = load_cdf(l2_val_data)
+    l2_val_data = _normalize_lo_species_validation_dataset(
+        load_cdf(l2_val_data), rename_neon=True
+    )
     for variable in l2_val_data.data_vars:
         processed_val = processed_2_ds[variable].values
         # NOTE: Replace nan with 0 for comparison as the validation data uses 0
@@ -451,6 +491,14 @@ def test_codice_l2_sw_species_intensity(mock_get_file_paths, codice_lut_path):
             rtol=1e-5,
             err_msg=f"Mismatch in variable '{variable}'",
         )
+    assert processed_2_ds["hplus"].dims == ("epoch", "esa_step")
+    assert processed_2_ds["unc_hplus"].dims == ("epoch", "esa_step")
+    assert "spin_sector" not in processed_2_ds
+    assert "spin_sector_label" not in processed_2_ds
+    assert "neon" in processed_2_ds
+    assert "unc_neon" in processed_2_ds
+    assert "ne" not in processed_2_ds
+    assert "unc_ne" not in processed_2_ds
     processed_2_ds.attrs["Data_version"] = "001"
     assert processed_2_ds.attrs["Logical_source"] == "imap_codice_l2_lo-sw-species"
     write_cdf(processed_2_ds)
@@ -458,19 +506,9 @@ def test_codice_l2_sw_species_intensity(mock_get_file_paths, codice_lut_path):
 
 @patch("imap_data_access.processing_input.ProcessingInputCollection.get_file_paths")
 def test_codice_l2_nsw_species_intensity(mock_get_file_paths, codice_lut_path):
-    mock_get_file_paths.side_effect = [
-        codice_lut_path(descriptor="lo-nsw-species", data_type="l0"),
-        codice_lut_path(descriptor="l1a-sci-lut"),
-    ]
-    processed_l1a_file = write_cdf(process_l1a(ProcessingInputCollection())[0])
-    processed_l1b_file = write_cdf(process_codice_l1b(processed_l1a_file))
-    # Mock get_files for l2
-    mock_get_file_paths.side_effect = [
-        [processed_l1b_file.as_posix()],
-        codice_lut_path(descriptor="l2-lo-gfactor"),
-        codice_lut_path(descriptor="l2-lo-efficiency"),
-    ]
-    processed_2_ds = process_codice_l2("lo-nsw-species", ProcessingInputCollection())
+    processed_2_ds = _generate_lo_species_l2_dataset(
+        "lo-nsw-species", mock_get_file_paths, codice_lut_path
+    )
     l2_val_data = (
         imap_module_directory
         / "tests"
@@ -482,7 +520,7 @@ def test_codice_l2_nsw_species_intensity(mock_get_file_paths, codice_lut_path):
             f"_{VALIDATION_FILE_VERSION}.cdf"
         )
     )
-    l2_val_data = load_cdf(l2_val_data)
+    l2_val_data = _normalize_lo_species_validation_dataset(load_cdf(l2_val_data))
     for variable in l2_val_data.data_vars:
         # Skip cnopus because this variable should be thrown out for lo nsw species
         # for table_ids <= 3978152295
@@ -497,9 +535,55 @@ def test_codice_l2_nsw_species_intensity(mock_get_file_paths, codice_lut_path):
             rtol=1e-5,
             err_msg=f"Mismatch in variable '{variable}'",
         )
+    assert processed_2_ds["hplus"].dims == ("epoch", "esa_step")
+    assert processed_2_ds["unc_hplus"].dims == ("epoch", "esa_step")
+    assert "spin_sector" not in processed_2_ds
+    assert "spin_sector_label" not in processed_2_ds
     processed_2_ds.attrs["Data_version"] = "001"
     assert processed_2_ds.attrs["Logical_source"] == "imap_codice_l2_lo-nsw-species"
     write_cdf(processed_2_ds)
+
+
+@pytest.mark.parametrize(
+    ("descriptor", "logical_source"),
+    [
+        ("lo-sw-species", "imap_codice_l2_lo-sw-species"),
+        ("lo-nsw-species", "imap_codice_l2_lo-nsw-species"),
+    ],
+)
+@patch("imap_data_access.processing_input.ProcessingInputCollection.get_file_paths")
+def test_codice_l2_lo_species_cdf_metadata(
+    mock_get_file_paths,
+    codice_lut_path,
+    descriptor,
+    logical_source,
+):
+    processed_l2_ds = _generate_lo_species_l2_dataset(
+        descriptor, mock_get_file_paths, codice_lut_path
+    )
+    processed_l2_ds.attrs["Data_version"] = "001"
+    assert processed_l2_ds.attrs["Logical_source"] == logical_source
+
+    file = write_cdf(processed_l2_ds)
+    errors = CDFValidator().validate(file)
+    assert not errors
+
+    written_ds = load_cdf(file)
+
+    for _variable_name, variable in written_ds.data_vars.items():
+        if variable.attrs.get("DISPLAY_TYPE") == "spectrogram":
+            assert variable.dims == ("epoch", "esa_step")
+            assert "LABLAXIS" in variable.attrs
+            assert "LABL_PTR_1" not in variable.attrs
+
+    assert "spin_sector" not in written_ds
+    assert "spin_sector_label" not in written_ds
+
+    if descriptor == "lo-sw-species":
+        assert "neon" in written_ds
+        assert "unc_neon" in written_ds
+        assert "ne" not in written_ds
+        assert "unc_ne" not in written_ds
 
 
 @patch("imap_data_access.processing_input.ProcessingInputCollection.get_file_paths")

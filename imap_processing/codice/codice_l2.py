@@ -494,6 +494,79 @@ def calculate_intensity(
     return dataset
 
 
+def _normalize_lo_species_output(
+    dataset: xr.Dataset,
+    species_names: list[str],
+    positions: list[int],
+    species_attrs: dict,
+    unc_attrs: dict,
+) -> xr.Dataset:
+    """
+    Normalize LO-species outputs for singleton spin-sector products.
+
+    Parameters
+    ----------
+    dataset : xarray.Dataset
+        The LO-species dataset being prepared for L2 output.
+    species_names : list[str]
+        The species and uncertainty variables updated by the current processing
+        call.
+    positions : list[int]
+        The instrument positions included in the current species calculation.
+    species_attrs : dict
+        L2 attribute template for the species variables in this product.
+    unc_attrs : dict
+        L2 attribute template for the uncertainty variables in this product.
+
+    Returns
+    -------
+    xarray.Dataset
+        The normalized dataset with singleton spin-sector axes removed and the
+        solar-wind Neon variables renamed for output, when applicable.
+    """
+    if dataset.sizes.get("spin_sector") == 1:
+        for species in species_names:
+            if species in dataset and "spin_sector" in dataset[species].dims:
+                dataset[species] = dataset[species].squeeze(
+                    dim="spin_sector", drop=True
+                )
+
+        has_remaining_spin_sector_data = any(
+            name not in {"spin_sector", "spin_sector_label"}
+            and "spin_sector" in variable.dims
+            for name, variable in dataset.variables.items()
+        )
+        if not has_remaining_spin_sector_data:
+            drop_names = [
+                name
+                for name in ("spin_sector", "spin_sector_label")
+                if name in dataset.variables
+            ]
+            if drop_names:
+                dataset = dataset.drop_vars(drop_names)
+
+    if positions == SOLAR_WIND_POSITIONS:
+        # `ne` is an invalid ISTP identifier because it collides with an IDL
+        # keyword, so rename the final output variable to `neon`.
+        rename_map = {
+            old_name: new_name
+            for old_name, new_name in {"ne": "neon", "unc_ne": "unc_neon"}.items()
+            if old_name in dataset
+        }
+        if rename_map:
+            dataset = dataset.rename(rename_map)
+            if "neon" in dataset:
+                dataset["neon"].attrs.update(
+                    apply_replacements_to_attrs(species_attrs, {"species": "neon"})
+                )
+            if "unc_neon" in dataset:
+                dataset["unc_neon"].attrs.update(
+                    apply_replacements_to_attrs(unc_attrs, {"species": "unc_neon"})
+                )
+
+    return dataset
+
+
 def process_lo_species_intensity(
     dataset: xr.Dataset,
     species_list: list,
@@ -552,7 +625,7 @@ def process_lo_species_intensity(
         attrs = unc_attrs if "unc" in species else species_attrs
         # Replace {species} and {direction} in attrs
         attrs = apply_replacements_to_attrs(attrs, {"species": species})
-        dataset[species].attrs.update(attrs)
+        dataset[species].attrs = attrs.copy()
 
     # Since the RGFO mode is implemented within a half-spin at a given esa step and
     # spin sector and since the species data is summed over all spin sectors, the data
@@ -567,6 +640,10 @@ def process_lo_species_intensity(
 
     for species in species_list:
         dataset[species].data[half_spin_boundary] = np.nan
+
+    dataset = _normalize_lo_species_output(
+        dataset, species_list, positions, species_attrs, unc_attrs
+    )
 
     return dataset
 

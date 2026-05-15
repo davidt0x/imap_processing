@@ -42,14 +42,12 @@ lo-species-attrs:
     CATDESC: "{species} Non-sunward Species"
     DEPEND_0: epoch
     DEPEND_1: esa_step
-    DEPEND_2: spin_sector
     DICT_KEY: SPASE>Particle>ParticleType:Ion,ParticleQuantity:NumberFlux,Qualifier:Differential
     DISPLAY_TYPE: spectrogram
     FIELDNAM: "Non-sunward - {species}"
     FILLVAL: *real_fillval
     FORMAT: F32.1
-    LABL_PTR_1: esa_step_label
-    LABL_PTR_2: spin_sector_label
+    LABLAXIS: Differential Number Flux
     SCALETYP: log
     UNITS: "#/(cm^2-s-sr-keV/q)"
     VALIDMAX: *species_valid_max
@@ -60,14 +58,12 @@ lo-pui-species-attrs:
     CATDESC: "{species} Pickup Ion Sunward Species"
     DEPEND_0: epoch
     DEPEND_1: esa_step
-    DEPEND_2: spin_sector
     DICT_KEY: SPASE>Particle>ParticleType:Ion,ParticleQuantity:NumberFlux,Qualifier:Differential
     DISPLAY_TYPE: spectrogram
     FIELDNAM: "Sunward - {species}"
     FILLVAL: *real_fillval
     FORMAT: F32.1
-    LABL_PTR_1: esa_step_label
-    LABL_PTR_2: spin_sector_label
+    LABLAXIS: Differential Number Flux
     SCALETYP: log
     UNITS: "#/(cm^2-s-sr-keV/q)"
     VALIDMAX: *species_valid_max
@@ -78,14 +74,12 @@ lo-sw-species-attrs:
   CATDESC: "{species} Solar Wind Sunward Species"
   DEPEND_0: epoch
   DEPEND_1: esa_step
-  DEPEND_2: spin_sector
   DICT_KEY: SPASE>Particle>ParticleType:Ion,ParticleQuantity:NumberFlux,Qualifier:Differential
   DISPLAY_TYPE: spectrogram
   FIELDNAM: "Sunward - {species}"
   FILLVAL: *real_fillval
   FORMAT: F32.1
-  LABL_PTR_1: esa_step_label
-  LABL_PTR_2: spin_sector_label
+  LABLAXIS: Differential Number Flux
   SCALETYP: log
   UNITS: "#/(cm^2-s-sr-keV/q)"
   VALIDMAX: *species_valid_max
@@ -96,14 +90,12 @@ lo-species-unc-attrs:
     CATDESC: "{species} Non-sunward Species uncertainty"
     DEPEND_0: epoch
     DEPEND_1: esa_step
-    DEPEND_2: spin_sector
     DICT_KEY: SPASE>Particle>ParticleType:Ion,ParticleQuantity:NumberFlux,Qualifier:Uncertainty
     DISPLAY_TYPE: spectrogram
     FIELDNAM: "Non-sunward - {species}"
     FILLVAL: *real_fillval
     FORMAT: F32.1
-    LABL_PTR_1: esa_step_label
-    LABL_PTR_2: spin_sector_label
+    LABLAXIS: Differential Number Flux Uncertainty
     SCALETYP: log
     UNITS: "#/(cm^2-s-sr-keV/q)"
     VALIDMAX: *species_valid_max
@@ -114,14 +106,12 @@ lo-pui-species-unc-attrs:
     CATDESC: "{species} Pickup Ion Sunward Species uncertainty"
     DEPEND_0: epoch
     DEPEND_1: esa_step
-    DEPEND_2: spin_sector
     DICT_KEY: SPASE>Particle>ParticleType:Ion,ParticleQuantity:NumberFlux,Qualifier:Uncertainty
     DISPLAY_TYPE: spectrogram
     FIELDNAM: "Sunward - {species}"
     FILLVAL: *real_fillval
     FORMAT: F32.1
-    LABL_PTR_1: esa_step_label
-    LABL_PTR_2: spin_sector_label
+    LABLAXIS: Differential Number Flux Uncertainty
     SCALETYP: log
     UNITS: "#/(cm^2-s-sr-keV/q)"
     VALIDMAX: *species_valid_max
@@ -132,14 +122,12 @@ lo-sw-species-unc-attrs:
     CATDESC: "{species} Solar Wind Sunward Species uncertainty"
     DEPEND_0: epoch
     DEPEND_1: esa_step
-    DEPEND_2: spin_sector
     DICT_KEY: SPASE>Particle>ParticleType:Ion,ParticleQuantity:NumberFlux,Qualifier:Uncertainty
     DISPLAY_TYPE: spectrogram
     FIELDNAM: "Sunward - {species}"
     FILLVAL: *real_fillval
     FORMAT: F32.1
-    LABL_PTR_1: esa_step_label
-    LABL_PTR_2: spin_sector_label
+    LABLAXIS: Differential Number Flux Uncertainty
     SCALETYP: log
     UNITS: "#/(cm^2-s-sr-keV/q)"
     VALIDMAX: *species_valid_max
